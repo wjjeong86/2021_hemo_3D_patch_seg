@@ -1,2 +1,7 @@
 **/*-checkpoint*
 *.pyc
+
+## train valid log 무시
+train_log/
+train_logs/
+valid_log/

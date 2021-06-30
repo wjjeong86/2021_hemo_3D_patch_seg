@@ -64,13 +64,18 @@ def fn_setup_seed(worker_id):
         
 class HemoPatientDatasetBase():
     ''' 한명한명 
+    @ meta :
+    @ image_size :
+    @ copy_samples :
     '''
     
     
     '''-------------------------구현필수'''
-    def __init__(self, meta):
+    def __init__(self, meta, image_size, copy_samples:int):
         super().__init__()
         self.meta = meta
+        self.isize = image_size
+        self.copy_samples = copy_samples
         self.list_id_patient = np.unique(meta.id_patient)
         return
     
@@ -85,14 +90,16 @@ class HemoPatientDatasetBase():
             except:
                 print('로딩실패:',id_patient)
             else:
-                braek;
+                break
         return item
 
     def __iter__(self):
         while True:
             r = np.random.randint(0,len(self.list_id_patient))
             id_patient = self.list_id_patient[r]
-            yield self.get_a_patient(id_patient)
+            item = self.get_a_patient(id_patient)
+            for i_copy in range(self.copy_samples):
+                yield item
         return
             
         
@@ -121,8 +128,9 @@ class HemoPatientDatasetBase():
             else:
                 mask = np.zeros_like(image)
             
-            image = cv2.resize(image, (256,256))
-            mask = cv2.resize(mask, (256,256), cv2.INTER_NEAREST)
+            image = cv2.resize(image, self.isize)
+#             mask = cv2.dilate(mask,np.ones((7,7)))
+            mask = cv2.resize(mask, self.isize, cv2.INTER_NEAREST)
             
             ##### append
             images.append( np.expand_dims(image,-1) )
@@ -139,23 +147,23 @@ class HemoPatientDatasetBase():
 #         masks  = np.reshape(masks , (1,D,H,W,C) )
         
         #####
-        return is_hemo_patient, images, masks, paths_image
+        return is_hemo_patient, images, masks, list(meta_a_patient.index)
     
     
         
         
 class HemoPatientDataset(HemoPatientDatasetBase, Dataset):
-    def __init__(self, meta):
+    def __init__(self, meta, image_size, copy_samples:int):
         Dataset.__init__(self)
-        HemoPatientDatasetBase.__init__(self,meta)
+        HemoPatientDatasetBase.__init__(self,meta,image_size,copy_samples)
         return
     
     
         
 class HemoPatientIterableDataset(HemoPatientDatasetBase, IterableDataset):
-    def __init__(self, meta):
+    def __init__(self, meta, image_size, copy_samples:int):
         IterableDataset.__init__(self)
-        HemoPatientDatasetBase.__init__(self,meta)
+        HemoPatientDatasetBase.__init__(self,meta,image_size,copy_samples)
         return
         
         
@@ -166,7 +174,7 @@ class HemoPatientIterableDataset(HemoPatientDatasetBase, IterableDataset):
     
 ''' ======================================= 랜덤패치 추출하는  '''
 class HemoRandomPatchIterableDataset(IterableDataset):
-    def __init__(self,iter_patient,mode_mask_weight=False):
+    def __init__(self,iter_patient,sample_from_patient,patch_size, mode_mask_weight=False):
         ''' 
         환자 1명 데이터로부터 여러개의 랜덤 패치 추출.
         효율상 여러개의 랜덤 패치를 얻어야 된다. 그래서
@@ -174,6 +182,8 @@ class HemoRandomPatchIterableDataset(IterableDataset):
         뒤에 오는 DataLoader는 batch_size=None로 설정해야 함
         
         @
+        sample_from_patient : 한 환자로부터 몇개 샘플을 뽑을건지
+        
         mode_hemo_weight : 
           True : 절반은 마스크 있는 부위에 가중치, 절반은 신경 안쓰고 다 뽑음
           False : 마스크 신경 안쓰고 다 뽑음
@@ -182,10 +192,8 @@ class HemoRandomPatchIterableDataset(IterableDataset):
         super().__init__()
         self.iter_patient = iter_patient
         self.mode_mask_weight = mode_mask_weight
-        self.N_patch = 4
-        self.patch_size = (6,80,80)
-        self.patch_stride = (3,40,40)
-        self.patches_per_patient = 8
+        self.sample_from_patient = sample_from_patient
+        self.patch_size = patch_size
     
 #     def __len__(self):
 #         return self.patches_per_patient
@@ -194,7 +202,9 @@ class HemoRandomPatchIterableDataset(IterableDataset):
 
     def __iter__(self):        
         while True:
-            yield self.get_random_patch()
+            item =  self.get_random_patch()
+            for i_patch in range(self.sample_from_patient):
+                yield [i[i_patch] for i in item]
         return
         
         
@@ -210,30 +220,17 @@ class HemoRandomPatchIterableDataset(IterableDataset):
         if self.mode_mask_weight == True: weight = arr4_mask.reshape(-1)/arr4_mask.sum()
         else:             weight = np.reshape(np.ones_like(arr4_mask)/arr4_mask.size,-1)
             
-        arr5_pimage_1, arr5_pmask_1 = self.crop_random_patch( 
-            arr4_image, arr4_mask, weight, N_patch=self.N_patch//2,
-            psize = self.patch_size, pstride = self.patch_stride,
+        arr5_pimage, arr5_pmask = self.crop_random_patch( 
+            arr4_image, arr4_mask, weight, sample_from_patient=self.sample_from_patient,
+            psize = self.patch_size, 
         )
         
-        ###### get patch : mask weight에 반응하지 않는 부분, 무조건 랜덤하게 뽑는다.
-        weight = np.reshape(np.ones_like(arr4_mask)/arr4_mask.size,-1)
-        
-        arr5_pimage_2, arr5_pmask_2 = self.crop_random_patch( 
-            arr4_image, arr4_mask, weight, N_patch=self.N_patch//2, 
-            psize = self.patch_size, pstride = self.patch_stride,
-        )
-        
-        ##### concat
-        arr5_pimage = np.concatenate( [arr5_pimage_1,arr5_pimage_2], axis=0)
-        arr5_pmask  = np.concatenate( [arr5_pmask_1, arr5_pmask_2], axis=0)
-        
-        return is_hemo_patient, arr5_pimage, arr5_pmask
+        return arr5_pimage, arr5_pmask
     
     
     
-    def crop_random_patch(self, arr4_image, arr4_mask, weight, N_patch, psize, pstride ):
+    def crop_random_patch(self, arr4_image, arr4_mask, weight, sample_from_patient, psize ):
         pd,ph,pw = psize
-        sd,sh,sw = pstride
         md,mh,mw,mc = arr4_mask.shape     
         
         ##### 패딩
@@ -242,7 +239,7 @@ class HemoRandomPatchIterableDataset(IterableDataset):
         
         ##### 루프 시작
         patchs_image,patchs_mask = [],[]
-        R = np.random.choice( list(range(arr4_mask.size)), size=N_patch, p=weight)
+        R = np.random.choice( list(range(arr4_mask.size)), size=sample_from_patient, p=weight)
         
         for r in R:
             
@@ -264,7 +261,38 @@ class HemoRandomPatchIterableDataset(IterableDataset):
         arr5_pmask  = np.stack(patchs_mask,0)
         
         return arr5_pimage, arr5_pmask
-           
+    
+    
+    
+    
+''' ======================================= 훈련용 데이터셋  '''
+class HemoRandomPatchTrainIterableDataset(IterableDataset):
+    def __init__(self,iter_a,iter_b,iter_c):
+        ''' 
+        3가지 종류 데이터를 섞어서 배출
+            - hemo, mask에 가중치
+            - hemo, 균등가중치
+            - normal 균등 가중치
+        @
+          
+        '''
+        super().__init__()
+        self.iter_a = iter_a
+        self.iter_b = iter_b
+        self.iter_c = iter_c
+    
+#     def __len__(self):
+#         return self.patches_per_patient
+    
+#     def __getitme__(self,idx):
+
+    def __iter__(self):  
+        while True:
+            yield next(self.iter_a)
+            yield next(self.iter_b)
+            yield next(self.iter_c)
+        return
+
             
      
     
@@ -289,23 +317,52 @@ if __name__ == '__main__':
     meta_hemo = meta[meta['is_hemo_patient']==True].reset_index(drop=True)
     meta_normal = meta[meta['is_hemo_patient']==False].reset_index(drop=True)
             
-    '''========================================================= ds->ds->dl 구조'''
-    ds_hemo_patient = HemoPatientIterableDataset(meta_hemo)
-    ds_normal_patient = HemoPatientIterableDataset(meta_normal)
+    '''========================================================= ds patient 확인'''
+    ds_hemo_patient = HemoPatientDataset(
+        meta_hemo, image_size=(128,128), copy_samples=1
+    )
+    ds_normal_patient = HemoPatientDataset(
+        meta_normal, image_size=(128,128), copy_samples=1
+    )
+       
+    ### 같은 환자가 copy_sample 만큼 나와야 된다.
+    for i,(_,himage4,_,idx_meta) in enumerate(iter(ds_hemo_patient)):
+        imshow( np.hstack(himage4)*255)        
+        if i>=10: break;
+            
+    dl_hemo_patient = DataLoader( 
+        ds_hemo_patient, batch_size=1, num_workers=1,
+    )
     
+    for i,(_,_,_,idx_meta) in enumerate(dl_hemo_patient):
+        if i>=10: break;
+            
+    
+    
+    
+    '''========================================================= ds patch 확인'''
     ds_hemo_patch = HemoRandomPatchIterableDataset(
-        iter(ds_hemo_patient), mode_mask_weight=True
+        iter(ds_hemo_patient), mode_mask_weight=True, sample_from_patient=8,
     )
     ds_normal_patch = HemoRandomPatchIterableDataset(
-        iter(ds_normal_patient), mode_mask_weight=False
+        iter(ds_normal_patient), mode_mask_weight=False, sample_from_patient=8,
     )
     
+#     for i,(image,mask) in enumerate(iter(ds_hemo_patch)):
+#         S = np.hstack(image)
+#         imshow(S*255)
+#         if i>=18: break;
+
+
+    '''========================================================= dl확인 :ds->ds->dl 구조'''
+
+    
     dl_hemo_patch = DataLoader( 
-        ds_hemo_patch, batch_size=None, num_workers=4,
+        ds_hemo_patch, batch_size=8, num_workers=4,
         worker_init_fn=fn_setup_seed,
     )
     dl_normal_patch = DataLoader(
-        ds_normal_patch, batch_size=None, num_workers=4,
+        ds_normal_patch, batch_size=8, num_workers=4,
         worker_init_fn=fn_setup_seed,
     )
     
@@ -313,7 +370,7 @@ if __name__ == '__main__':
     iter_hemo = iter(dl_hemo_patch)
     iter_normal = iter(dl_normal_patch)
     
-    for i,((_,himage5,hmask5),(_,nimage5,nmask5)) in \
+    for i,((himage5,hmask5),(nimage5,nmask5)) in \
         enumerate( zip(iter_hemo,iter_normal) ):
         
         himage = himage5[0,3,:]
