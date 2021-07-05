@@ -14,7 +14,7 @@ https://wegonnamakeit.tistory.com/47
 
 '''============================================================ setting '''
 
-PATH_META_CSV = '/mnt/hdd0_share/2021_Hemorrhage/Hemorrhage_IMG/dataset.csv'
+PATH_META_CSV = '/mnt/g/Hemorrhage_IMG/dataset.csv'
 
 # epoch
 MAX_EPOCH = 200
@@ -73,7 +73,6 @@ device = TORCH_DEVICE
 print("Using {} device".format(device))
 
 
-
 '''============================================================= data loader '''
 ''' get meta '''
 meta_trh, meta_vlh, meta_teh, meta_trn, meta_vln, meta_ten =  get_meta(PATH_META_CSV)
@@ -100,7 +99,7 @@ dl_vl = DataLoader( ds_vl_patient, batch_size=1, num_workers=1)
 # model = vnet.VNet().to('cpu')
 # model.apply(vnet.weights_init)
 
-import vnet2
+from models import vnet2
 model = vnet2.VNetV2().to('cpu')
 
 

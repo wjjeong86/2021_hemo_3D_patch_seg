@@ -74,7 +74,7 @@ def get_data_loader_train(meta_trh, meta_trn, BATCH_SIZE, IMAGE_SIZE, N_PATCH_PE
 
     ds_tr = HemoRandomPatchTrainIterableDataset( iter(ds_trh_patch_1), iter(ds_trh_patch_2), iter(ds_trn_patch))
 
-    dl_tr = DataLoader( ds_tr, batch_size=BATCH_SIZE, num_workers=16, worker_init_fn=fn_setup_seed)
+    dl_tr = DataLoader( ds_tr, batch_size=BATCH_SIZE, num_workers=1, worker_init_fn=fn_setup_seed)
 
     return dl_tr
     

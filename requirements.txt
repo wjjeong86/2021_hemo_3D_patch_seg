@@ -2,3 +2,5 @@ scikit-learn
 pandas
 opencv-contrib-python
 matplotlib
+torchsummary
+pytorch-ignite

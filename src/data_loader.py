@@ -293,6 +293,37 @@ class HemoRandomPatchTrainIterableDataset(IterableDataset):
             yield next(self.iter_c)
         return
 
+    
+class HemoRandomPatchTrainDataset(Dataset):
+    def __init__(self,iter_a,iter_b,iter_c,fake_len):
+        ''' 
+        3가지 종류 데이터를 섞어서 배출
+            - hemo, mask에 가중치
+            - hemo, 균등가중치
+            - normal 균등 가중치
+        @
+          
+        '''
+        super().__init__()
+        self.iter_a = iter_a
+        self.iter_b = iter_b
+        self.iter_c = iter_c
+        self.fake_len = fake_len
+    
+    def __len__(self):
+        return self.fake_len
+    
+    def __getitme__(self,idx):
+        a = idx%3
+        if   a==0 : return next(self.iter_a)
+        elif a==1 : return next(self.iter_b)
+        elif a==2 : return next(self.iter_c)
+        return 
+    
+#     def __iter__(self):  
+        
+
+    
             
      
     

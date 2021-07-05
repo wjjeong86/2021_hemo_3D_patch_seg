@@ -172,4 +172,4 @@ if __name__ == '__main__':
     import torchsummary
     
     model = VNetV2().to('cpu')
-    torchsummary.summary(model,(16,128,128,1), batch_size=-1, device='cpu') #NDHWC
+    torchsummary.summary(model,(16,128,128,1), batch_size=3*3, device='cpu') #NDHWC
